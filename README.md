@@ -21,6 +21,9 @@ Health endpoints:
 
 Core endpoint:
 
+- `GET /api/find-carparks?uuid=unique-user-id-12345&n=3` scans exactly `2n`
+  unique logical car parks sequentially and returns the top `n` by available
+  spaces.
 - `GET /api/annotate-carpark?carpark_id=CBD_001` retrieves a fresh simulated
   camera image, runs YOLO inference, and returns a base64-encoded annotated JPEG.
 

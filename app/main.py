@@ -13,6 +13,7 @@ from app.infrastructure.settings import Settings
 from app.services.camera_client import CameraClient
 from app.services.annotation import AnnotationService
 from app.services.carpark_registry import CarparkRegistry
+from app.services.carpark_search import CarparkSearchService
 from app.services.inference import InferenceService
 from app.services.model_manager import ModelManager
 
@@ -42,6 +43,11 @@ def create_app(
         inference_service,
         carpark_registry,
     )
+    carpark_search_service = CarparkSearchService(
+        carpark_registry,
+        camera_client,
+        inference_service,
+    )
     configure_logging(app_settings.log_level)
 
     @asynccontextmanager
@@ -58,6 +64,7 @@ def create_app(
         app.state.carpark_registry = carpark_registry
         app.state.inference_service = inference_service
         app.state.annotation_service = annotation_service
+        app.state.carpark_search_service = carpark_search_service
         app.state.ready = True
         logger.info(
             "application_ready",
