@@ -1,11 +1,11 @@
 from dataclasses import dataclass
-from functools import partial
 import logging
 from typing import Protocol
 
 import anyio
 
 from app.errors import ApplicationError
+from app.infrastructure.concurrency import InferenceExecutor
 from app.services.camera_client import CameraClientError
 from app.services.inference import InferenceError, InferenceService
 
@@ -48,10 +48,16 @@ class CarparkSearchService:
         registry: SearchCarparkRegistry,
         camera_client: SearchCameraSource,
         inference_service: InferenceService,
+        inference_executor: InferenceExecutor,
+        search_timeout_seconds: float,
     ) -> None:
+        if search_timeout_seconds <= 0:
+            raise ValueError("SEARCH_TIMEOUT_SECONDS must be greater than 0")
         self._registry = registry
         self._camera_client = camera_client
         self._inference_service = inference_service
+        self._inference_executor = inference_executor
+        self._search_timeout_seconds = search_timeout_seconds
 
     async def find(self, uuid: str, n: int) -> CarparkSearchResult:
         query_count = 2 * n
@@ -71,15 +77,14 @@ class CarparkSearchService:
         total_inference_ms = 0.0
         failed_carparks = 0
 
-        for carpark_id in selected_ids:
+        async def scan_carpark(carpark_id: str) -> None:
+            nonlocal total_inference_ms, failed_carparks
             try:
                 photo = await self._camera_client.take_photo(carpark_id)
-                inference = await anyio.to_thread.run_sync(
-                    partial(
-                        self._inference_service.predict,
-                        photo.content,
-                        include_annotation=False,
-                    )
+                inference = await self._inference_executor.run(
+                    self._inference_service.predict,
+                    photo.content,
+                    include_annotation=False,
                 )
             except (CameraClientError, InferenceError) as exc:
                 failed_carparks += 1
@@ -91,7 +96,7 @@ class CarparkSearchService:
                         "error_type": type(exc).__name__,
                     },
                 )
-                continue
+                return
 
             successful.append(
                 RankedCarpark(
@@ -101,6 +106,18 @@ class CarparkSearchService:
                 )
             )
             total_inference_ms += inference.inference_ms
+
+        try:
+            with anyio.fail_after(self._search_timeout_seconds):
+                async with anyio.create_task_group() as task_group:
+                    for carpark_id in selected_ids:
+                        task_group.start_soon(scan_carpark, carpark_id)
+        except TimeoutError as exc:
+            raise ApplicationError(
+                status_code=504,
+                code="search_timeout",
+                message="The car-park search exceeded its time limit",
+            ) from exc
 
         if len(successful) < n:
             raise ApplicationError(

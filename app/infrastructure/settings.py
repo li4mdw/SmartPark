@@ -20,6 +20,9 @@ class Settings:
     camera_connect_timeout_seconds: float = 2.0
     camera_read_timeout_seconds: float = 10.0
     carpark_count: int = 10
+    camera_concurrency: int = 10
+    inference_concurrency: int = 1
+    search_timeout_seconds: float = 60.0
 
     @classmethod
     def from_environment(cls) -> "Settings":
@@ -42,4 +45,7 @@ class Settings:
                 os.getenv("CAMERA_READ_TIMEOUT_SECONDS", "10.0")
             ),
             carpark_count=int(os.getenv("CARPARK_COUNT", "10")),
+            camera_concurrency=int(os.getenv("CAMERA_CONCURRENCY", "10")),
+            inference_concurrency=int(os.getenv("INFERENCE_CONCURRENCY", "1")),
+            search_timeout_seconds=float(os.getenv("SEARCH_TIMEOUT_SECONDS", "60.0")),
         )

@@ -1,10 +1,8 @@
 from dataclasses import dataclass
-from functools import partial
 from typing import Protocol
 
-import anyio
-
 from app.errors import ApplicationError
+from app.infrastructure.concurrency import InferenceExecutor
 from app.services.camera_client import (
     CameraClientError,
     CameraTimeoutError,
@@ -34,10 +32,12 @@ class AnnotationService:
         camera_client: CameraSource,
         inference_service: InferenceService,
         carpark_registry: CarparkLookup,
+        inference_executor: InferenceExecutor,
     ) -> None:
         self._camera_client = camera_client
         self._inference_service = inference_service
         self._carpark_registry = carpark_registry
+        self._inference_executor = inference_executor
 
     async def annotate(self, carpark_id: str) -> AnnotationResult:
         if not self._carpark_registry.exists(carpark_id):
@@ -69,12 +69,10 @@ class AnnotationService:
             ) from exc
 
         try:
-            inference_result = await anyio.to_thread.run_sync(
-                partial(
-                    self._inference_service.predict,
-                    photo.content,
-                    include_annotation=True,
-                )
+            inference_result = await self._inference_executor.run(
+                self._inference_service.predict,
+                photo.content,
+                include_annotation=True,
             )
         except InferenceError as exc:
             raise ApplicationError(

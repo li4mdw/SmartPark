@@ -8,6 +8,7 @@ from app.api.core import router as core_router
 from app.api.errors import register_exception_handlers
 from app.api.health import router as health_router
 from app.infrastructure.http import create_http_client
+from app.infrastructure.concurrency import InferenceExecutor
 from app.infrastructure.logging import configure_logging
 from app.infrastructure.settings import Settings
 from app.services.camera_client import CameraClient
@@ -31,8 +32,13 @@ def create_app(
         app_settings.model_version,
     )
     http_client = create_http_client(app_settings)
-    camera_client = CameraClient(http_client, app_settings.max_image_bytes)
+    camera_client = CameraClient(
+        http_client,
+        app_settings.max_image_bytes,
+        max_concurrent_requests=app_settings.camera_concurrency,
+    )
     carpark_registry = CarparkRegistry(app_settings.carpark_count)
+    inference_executor = InferenceExecutor(app_settings.inference_concurrency)
     inference_service = InferenceService(
         inference_model,
         available_class_id=app_settings.available_class_id,
@@ -42,11 +48,14 @@ def create_app(
         camera_client,
         inference_service,
         carpark_registry,
+        inference_executor,
     )
     carpark_search_service = CarparkSearchService(
         carpark_registry,
         camera_client,
         inference_service,
+        inference_executor,
+        app_settings.search_timeout_seconds,
     )
     configure_logging(app_settings.log_level)
 
@@ -63,6 +72,7 @@ def create_app(
         app.state.camera_client = camera_client
         app.state.carpark_registry = carpark_registry
         app.state.inference_service = inference_service
+        app.state.inference_executor = inference_executor
         app.state.annotation_service = annotation_service
         app.state.carpark_search_service = carpark_search_service
         app.state.ready = True
@@ -71,6 +81,9 @@ def create_app(
             extra={
                 "model_version": inference_model.model_version,
                 "model_format": inference_model.model_format.value,
+                "carpark_count": carpark_registry.count,
+                "camera_concurrency": app_settings.camera_concurrency,
+                "inference_concurrency": inference_executor.max_concurrency,
             },
         )
 

@@ -2,6 +2,7 @@ import base64
 import binascii
 from dataclasses import dataclass
 
+import anyio
 import httpx
 from pydantic import ValidationError
 
@@ -32,16 +33,25 @@ class CameraPhoto:
 
 
 class CameraClient:
-    def __init__(self, http_client: httpx.AsyncClient, max_image_bytes: int) -> None:
+    def __init__(
+        self,
+        http_client: httpx.AsyncClient,
+        max_image_bytes: int,
+        max_concurrent_requests: int = 10,
+    ) -> None:
+        if max_concurrent_requests < 1:
+            raise ValueError("CAMERA_CONCURRENCY must be at least 1")
         self._http_client = http_client
         self._max_image_bytes = max_image_bytes
+        self._request_semaphore = anyio.Semaphore(max_concurrent_requests)
 
     async def take_photo(self, carpark_id: str) -> CameraPhoto:
         try:
-            response = await self._http_client.get(
-                "/api/takephoto",
-                params={"carpark_id": carpark_id},
-            )
+            async with self._request_semaphore:
+                response = await self._http_client.get(
+                    "/api/takephoto",
+                    params={"carpark_id": carpark_id},
+                )
         except httpx.TimeoutException as exc:
             raise CameraTimeoutError(f"Camera timed out for {carpark_id}") from exc
         except httpx.RequestError as exc:

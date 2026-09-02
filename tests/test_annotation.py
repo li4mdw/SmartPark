@@ -3,6 +3,7 @@ from types import SimpleNamespace
 import pytest
 
 from app.errors import ApplicationError
+from app.infrastructure.concurrency import InferenceExecutor
 from app.services.annotation import AnnotationService
 from app.services.camera_client import CameraPhoto, CameraTimeoutError
 
@@ -31,11 +32,18 @@ class FakeCarparkRegistry:
         return self.valid
 
 
+def make_service(camera, inference, registry=None) -> AnnotationService:
+    return AnnotationService(
+        camera,
+        inference,
+        registry or FakeCarparkRegistry(),
+        InferenceExecutor(1),
+    )
+
+
 @pytest.mark.anyio
 async def test_annotation_service_combines_camera_and_inference() -> None:
-    service = AnnotationService(
-        FakeCameraClient(), FakeInferenceService(), FakeCarparkRegistry()
-    )
+    service = make_service(FakeCameraClient(), FakeInferenceService())
 
     result = await service.annotate("CBD_004")
 
@@ -49,9 +57,7 @@ async def test_annotation_service_maps_camera_timeout() -> None:
         async def take_photo(self, carpark_id: str):
             raise CameraTimeoutError("timeout")
 
-    service = AnnotationService(
-        TimedOutCamera(), FakeInferenceService(), FakeCarparkRegistry()
-    )
+    service = make_service(TimedOutCamera(), FakeInferenceService())
 
     with pytest.raises(ApplicationError) as error:
         await service.annotate("CBD_004")
@@ -66,9 +72,7 @@ async def test_annotation_service_requires_annotated_image() -> None:
         def predict(self, image: bytes, *, include_annotation: bool = False):
             return SimpleNamespace(annotated_image=None)
 
-    service = AnnotationService(
-        FakeCameraClient(), MissingAnnotationInference(), FakeCarparkRegistry()
-    )
+    service = make_service(FakeCameraClient(), MissingAnnotationInference())
 
     with pytest.raises(ApplicationError) as error:
         await service.annotate("CBD_004")
@@ -82,10 +86,10 @@ async def test_annotation_service_rejects_unknown_carpark_before_camera_call() -
         async def take_photo(self, carpark_id: str):
             raise AssertionError("Camera should not be called for an unknown car park")
 
-    service = AnnotationService(
+    service = make_service(
         CameraMustNotBeCalled(),
         FakeInferenceService(),
-        FakeCarparkRegistry(valid=False),
+        registry=FakeCarparkRegistry(valid=False),
     )
 
     with pytest.raises(ApplicationError) as error:

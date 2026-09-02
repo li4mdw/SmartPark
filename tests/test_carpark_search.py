@@ -3,6 +3,7 @@ from types import SimpleNamespace
 import pytest
 
 from app.errors import ApplicationError
+from app.infrastructure.concurrency import InferenceExecutor
 from app.services.camera_client import CameraPhoto, CameraUnavailableError
 from app.services.carpark_search import CarparkSearchService
 
@@ -58,16 +59,33 @@ class FakeInferenceService:
         )
 
 
+def make_service(
+    registry: FakeRegistry,
+    camera: FakeCameraClient,
+    *,
+    inference_concurrency: int = 1,
+    search_timeout_seconds: float = 5.0,
+) -> CarparkSearchService:
+    return CarparkSearchService(
+        registry,
+        camera,
+        FakeInferenceService(),
+        InferenceExecutor(inference_concurrency),
+        search_timeout_seconds,
+    )
+
+
 @pytest.mark.anyio
 async def test_search_queries_exactly_twice_n_and_ranks_results() -> None:
     registry = FakeRegistry()
     camera = FakeCameraClient()
-    service = CarparkSearchService(registry, camera, FakeInferenceService())
+    service = make_service(registry, camera)
 
     result = await service.find("user-123", 3)
 
     assert registry.sample_calls == [6]
-    assert camera.calls == list(registry.ids[:6])
+    assert set(camera.calls) == set(registry.ids[:6])
+    assert len(camera.calls) == 6
     assert [item.carpark_id for item in result.results] == [
         "CBD_003",
         "CBD_006",
@@ -81,11 +99,11 @@ async def test_search_queries_exactly_twice_n_and_ranks_results() -> None:
 async def test_search_allows_partial_failure_when_n_results_remain() -> None:
     registry = FakeRegistry()
     camera = FakeCameraClient(failing_ids={"CBD_002"})
-    service = CarparkSearchService(registry, camera, FakeInferenceService())
+    service = make_service(registry, camera)
 
     result = await service.find("user-123", 2)
 
-    assert camera.calls == list(registry.ids[:4])
+    assert set(camera.calls) == set(registry.ids[:4])
     assert len(result.results) == 2
     assert result.failed_carparks == 1
 
@@ -96,12 +114,12 @@ async def test_search_fails_when_too_few_results_remain() -> None:
     camera = FakeCameraClient(
         failing_ids={"CBD_001", "CBD_002", "CBD_003"}
     )
-    service = CarparkSearchService(registry, camera, FakeInferenceService())
+    service = make_service(registry, camera)
 
     with pytest.raises(ApplicationError) as error:
         await service.find("user-123", 2)
 
-    assert camera.calls == list(registry.ids[:4])
+    assert set(camera.calls) == set(registry.ids[:4])
     assert error.value.status_code == 503
     assert error.value.code == "insufficient_carpark_results"
 
@@ -110,7 +128,7 @@ async def test_search_fails_when_too_few_results_remain() -> None:
 async def test_search_rejects_n_when_twice_n_exceeds_range() -> None:
     registry = FakeRegistry(count=10)
     camera = FakeCameraClient()
-    service = CarparkSearchService(registry, camera, FakeInferenceService())
+    service = make_service(registry, camera)
 
     with pytest.raises(ApplicationError) as error:
         await service.find("user-123", 6)

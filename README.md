@@ -64,6 +64,9 @@ python -m pytest
 | `CAMERA_CONNECT_TIMEOUT_SECONDS` | `2.0` |
 | `CAMERA_READ_TIMEOUT_SECONDS` | `10.0` |
 | `CARPARK_COUNT` | `10` |
+| `CAMERA_CONCURRENCY` | `10` |
+| `INFERENCE_CONCURRENCY` | `1` |
+| `SEARCH_TIMEOUT_SECONDS` | `60.0` |
 | `CAMERA_DATASET_PATH` | `<release>/images` |
 | `CAMERA_LOG_LEVEL` | `INFO` |
 
@@ -73,3 +76,8 @@ SmartPark process.
 
 `CARPARK_COUNT` must be between 10 and 99. SmartPark generates logical IDs from
 `CBD_001` through `CBD_N` and rejects IDs outside the active range.
+
+Camera images for a search are fetched concurrently. Blocking model predictions
+run in worker threads behind one shared per-process semaphore. Keep
+`INFERENCE_CONCURRENCY=1` unless benchmarks show that the selected model backend
+is safe and faster with a higher value.
