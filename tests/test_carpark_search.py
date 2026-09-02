@@ -6,6 +6,7 @@ from app.errors import ApplicationError
 from app.infrastructure.concurrency import InferenceExecutor
 from app.services.camera_client import CameraPhoto, CameraUnavailableError
 from app.services.carpark_search import CarparkSearchService
+from tests.fakes import RecordingStatusRepository
 
 
 class FakeRegistry:
@@ -56,6 +57,7 @@ class FakeInferenceService:
             available_spaces=available,
             confidence_score=confidence,
             inference_ms=10.0,
+            model_version="test-v1",
         )
 
 
@@ -65,6 +67,7 @@ def make_service(
     *,
     inference_concurrency: int = 1,
     search_timeout_seconds: float = 5.0,
+    status_repository=None,
 ) -> CarparkSearchService:
     return CarparkSearchService(
         registry,
@@ -72,6 +75,7 @@ def make_service(
         FakeInferenceService(),
         InferenceExecutor(inference_concurrency),
         search_timeout_seconds,
+        status_repository or RecordingStatusRepository(),
     )
 
 
@@ -79,7 +83,8 @@ def make_service(
 async def test_search_queries_exactly_twice_n_and_ranks_results() -> None:
     registry = FakeRegistry()
     camera = FakeCameraClient()
-    service = make_service(registry, camera)
+    statuses = RecordingStatusRepository()
+    service = make_service(registry, camera, status_repository=statuses)
 
     result = await service.find("user-123", 3)
 
@@ -93,6 +98,7 @@ async def test_search_queries_exactly_twice_n_and_ranks_results() -> None:
     ]
     assert result.total_inference_ms == 60.0
     assert result.failed_carparks == 0
+    assert {item["carpark_id"] for item in statuses.saved} == set(registry.ids[:6])
 
 
 @pytest.mark.anyio

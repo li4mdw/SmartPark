@@ -67,6 +67,9 @@ python -m pytest
 | `CAMERA_CONCURRENCY` | `10` |
 | `INFERENCE_CONCURRENCY` | `1` |
 | `SEARCH_TIMEOUT_SECONDS` | `60.0` |
+| `REDIS_URL` | `redis://127.0.0.1:6379/0` |
+| `RECENT_USER_WINDOW_SECONDS` | `30` |
+| `SEARCH_CACHE_TTL_SECONDS` | `5` |
 | `CAMERA_DATASET_PATH` | `<release>/images` |
 | `CAMERA_LOG_LEVEL` | `INFO` |
 
@@ -81,3 +84,7 @@ Camera images for a search are fetched concurrently. Blocking model predictions
 run in worker threads behind one shared per-process semaphore. Keep
 `INFERENCE_CONCURRENCY=1` unless benchmarks show that the selected model backend
 is safe and faster with a higher value.
+
+SmartPark requires a reachable Redis server during startup. Redis stores recent
+user activity, request events, latest car-park inference status, and short-lived
+search cache entries. All SmartPark replicas must use the same `REDIS_URL`.

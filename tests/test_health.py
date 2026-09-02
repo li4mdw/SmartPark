@@ -2,6 +2,7 @@ from fastapi.testclient import TestClient
 from types import SimpleNamespace
 
 from app.main import create_app
+from tests.fakes import InMemoryRedis
 
 
 class FakeModelManager:
@@ -13,7 +14,10 @@ class FakeModelManager:
 
 
 def make_app():
-    return create_app(model_manager=FakeModelManager())
+    return create_app(
+        model_manager=FakeModelManager(),
+        redis_client=InMemoryRedis(),
+    )
 
 
 def test_liveness_endpoint() -> None:

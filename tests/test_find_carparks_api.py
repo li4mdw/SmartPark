@@ -4,7 +4,8 @@ from fastapi.testclient import TestClient
 
 from app.api.core import get_carpark_search_service
 from app.main import create_app
-from app.services.carpark_search import CarparkSearchResult, RankedCarpark
+from app.schemas.search import CarparkSearchResult, RankedCarpark
+from tests.fakes import InMemoryRedis
 
 
 class FakeModelManager:
@@ -32,7 +33,9 @@ class FakeSearchService:
 
 
 def make_client() -> TestClient:
-    application = create_app(model_manager=FakeModelManager())
+    application = create_app(
+        model_manager=FakeModelManager(), redis_client=InMemoryRedis()
+    )
     application.dependency_overrides[get_carpark_search_service] = (
         lambda: FakeSearchService()
     )
@@ -88,3 +91,29 @@ def test_find_carparks_rejects_unsafe_uuid_characters() -> None:
 
     assert response.status_code == 422
     assert response.json()["error"]["code"] == "validation_error"
+
+
+def test_find_carparks_records_request_and_returns_request_id() -> None:
+    redis = InMemoryRedis()
+    application = create_app(
+        model_manager=FakeModelManager(),
+        redis_client=redis,
+    )
+    application.dependency_overrides[get_carpark_search_service] = (
+        lambda: FakeSearchService()
+    )
+
+    with TestClient(application) as client:
+        response = client.get(
+            "/api/find-carparks",
+            params={"uuid": "unique-user-id-12345", "n": 2},
+            headers={"x-request-id": "request-test-1"},
+        )
+
+    assert response.headers["x-request-id"] == "request-test-1"
+    assert redis.sorted_sets["smartpark:recent_users"].keys() == {
+        "unique-user-id-12345"
+    }
+    event = redis.streams["smartpark:request_events"][0]
+    assert event["request_id"] == "request-test-1"
+    assert event["status_code"] == "200"

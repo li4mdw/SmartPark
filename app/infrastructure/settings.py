@@ -23,6 +23,9 @@ class Settings:
     camera_concurrency: int = 10
     inference_concurrency: int = 1
     search_timeout_seconds: float = 60.0
+    redis_url: str = "redis://127.0.0.1:6379/0"
+    recent_user_window_seconds: int = 30
+    search_cache_ttl_seconds: int = 5
 
     @classmethod
     def from_environment(cls) -> "Settings":
@@ -48,4 +51,9 @@ class Settings:
             camera_concurrency=int(os.getenv("CAMERA_CONCURRENCY", "10")),
             inference_concurrency=int(os.getenv("INFERENCE_CONCURRENCY", "1")),
             search_timeout_seconds=float(os.getenv("SEARCH_TIMEOUT_SECONDS", "60.0")),
+            redis_url=os.getenv("REDIS_URL", "redis://127.0.0.1:6379/0"),
+            recent_user_window_seconds=int(
+                os.getenv("RECENT_USER_WINDOW_SECONDS", "30")
+            ),
+            search_cache_ttl_seconds=int(os.getenv("SEARCH_CACHE_TTL_SECONDS", "5")),
         )

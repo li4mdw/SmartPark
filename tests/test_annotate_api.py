@@ -6,6 +6,7 @@ from fastapi.testclient import TestClient
 from app.api.core import get_annotation_service
 from app.main import create_app
 from app.services.annotation import AnnotationResult
+from tests.fakes import InMemoryRedis
 
 
 class FakeModelManager:
@@ -22,7 +23,9 @@ class FakeAnnotationService:
 
 
 def make_client() -> TestClient:
-    application = create_app(model_manager=FakeModelManager())
+    application = create_app(
+        model_manager=FakeModelManager(), redis_client=InMemoryRedis()
+    )
     application.dependency_overrides[get_annotation_service] = (
         lambda: FakeAnnotationService()
     )
@@ -57,7 +60,9 @@ def test_annotate_endpoint_rejects_invalid_id_format() -> None:
 
 
 def test_annotate_endpoint_rejects_id_outside_configured_range() -> None:
-    application = create_app(model_manager=FakeModelManager())
+    application = create_app(
+        model_manager=FakeModelManager(), redis_client=InMemoryRedis()
+    )
 
     with TestClient(application) as client:
         response = client.get(

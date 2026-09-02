@@ -1,4 +1,3 @@
-from dataclasses import dataclass
 import logging
 from typing import Protocol
 
@@ -6,6 +5,7 @@ import anyio
 
 from app.errors import ApplicationError
 from app.infrastructure.concurrency import InferenceExecutor
+from app.schemas.search import CarparkSearchResult, RankedCarpark
 from app.services.camera_client import CameraClientError
 from app.services.inference import InferenceError, InferenceService
 
@@ -24,20 +24,8 @@ class SearchCarparkRegistry(Protocol):
     def sample(self, count: int) -> tuple[str, ...]: ...
 
 
-@dataclass(frozen=True, slots=True)
-class RankedCarpark:
-    carpark_id: str
-    available_spaces: int
-    confidence_score: float
-
-
-@dataclass(frozen=True, slots=True)
-class CarparkSearchResult:
-    uuid: str
-    requested_n: int
-    total_inference_ms: float
-    results: tuple[RankedCarpark, ...]
-    failed_carparks: int
+class SearchStatusWriter(Protocol):
+    async def save_latest(self, **status) -> None: ...
 
 
 class CarparkSearchService:
@@ -50,6 +38,7 @@ class CarparkSearchService:
         inference_service: InferenceService,
         inference_executor: InferenceExecutor,
         search_timeout_seconds: float,
+        status_repository: SearchStatusWriter,
     ) -> None:
         if search_timeout_seconds <= 0:
             raise ValueError("SEARCH_TIMEOUT_SECONDS must be greater than 0")
@@ -58,6 +47,7 @@ class CarparkSearchService:
         self._inference_service = inference_service
         self._inference_executor = inference_executor
         self._search_timeout_seconds = search_timeout_seconds
+        self._status_repository = status_repository
 
     async def find(self, uuid: str, n: int) -> CarparkSearchResult:
         query_count = 2 * n
@@ -106,6 +96,20 @@ class CarparkSearchService:
                 )
             )
             total_inference_ms += inference.inference_ms
+            try:
+                await self._status_repository.save_latest(
+                    carpark_id=carpark_id,
+                    available_spaces=inference.available_spaces,
+                    confidence_score=inference.confidence_score,
+                    inference_ms=inference.inference_ms,
+                    model_version=inference.model_version,
+                )
+            except Exception:
+                # Search results remain useful if only the operational store fails.
+                logger.exception(
+                    "carpark_status_write_failed",
+                    extra={"uuid": uuid, "carpark_id": carpark_id},
+                )
 
         try:
             with anyio.fail_after(self._search_timeout_seconds):

@@ -6,6 +6,7 @@ from app.errors import ApplicationError
 from app.infrastructure.concurrency import InferenceExecutor
 from app.services.annotation import AnnotationService
 from app.services.camera_client import CameraPhoto, CameraTimeoutError
+from tests.fakes import RecordingStatusRepository
 
 
 class FakeCameraClient:
@@ -21,7 +22,13 @@ class FakeInferenceService:
     def predict(self, image: bytes, *, include_annotation: bool = False):
         assert image == b"source-image"
         assert include_annotation is True
-        return SimpleNamespace(annotated_image=b"annotated-image")
+        return SimpleNamespace(
+            annotated_image=b"annotated-image",
+            available_spaces=4,
+            confidence_score=0.9,
+            inference_ms=12.0,
+            model_version="test-v1",
+        )
 
 
 class FakeCarparkRegistry:
@@ -32,23 +39,36 @@ class FakeCarparkRegistry:
         return self.valid
 
 
-def make_service(camera, inference, registry=None) -> AnnotationService:
+def make_service(camera, inference, registry=None, status_repository=None) -> AnnotationService:
     return AnnotationService(
         camera,
         inference,
         registry or FakeCarparkRegistry(),
         InferenceExecutor(1),
+        status_repository or RecordingStatusRepository(),
     )
 
 
 @pytest.mark.anyio
 async def test_annotation_service_combines_camera_and_inference() -> None:
-    service = make_service(FakeCameraClient(), FakeInferenceService())
+    statuses = RecordingStatusRepository()
+    service = make_service(
+        FakeCameraClient(), FakeInferenceService(), status_repository=statuses
+    )
 
     result = await service.annotate("CBD_004")
 
     assert result.carpark_id == "CBD_004"
     assert result.image == b"annotated-image"
+    assert statuses.saved == [
+        {
+            "carpark_id": "CBD_004",
+            "available_spaces": 4,
+            "confidence_score": 0.9,
+            "inference_ms": 12.0,
+            "model_version": "test-v1",
+        }
+    ]
 
 
 @pytest.mark.anyio
@@ -70,7 +90,13 @@ async def test_annotation_service_maps_camera_timeout() -> None:
 async def test_annotation_service_requires_annotated_image() -> None:
     class MissingAnnotationInference:
         def predict(self, image: bytes, *, include_annotation: bool = False):
-            return SimpleNamespace(annotated_image=None)
+            return SimpleNamespace(
+                annotated_image=None,
+                available_spaces=0,
+                confidence_score=0.0,
+                inference_ms=1.0,
+                model_version="test-v1",
+            )
 
     service = make_service(FakeCameraClient(), MissingAnnotationInference())
 
