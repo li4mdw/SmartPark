@@ -8,6 +8,7 @@ from uuid import uuid4
 from fastapi import FastAPI
 
 from app.api.core import router as core_router
+from app.api.dashboard import router as dashboard_router
 from app.api.errors import register_exception_handlers
 from app.api.health import router as health_router
 from app.api.operator import router as operator_router
@@ -166,6 +167,7 @@ def create_app(
     app.include_router(core_router)
     app.include_router(health_router)
     app.include_router(operator_router)
+    app.include_router(dashboard_router)
     register_exception_handlers(app)
     return app
 

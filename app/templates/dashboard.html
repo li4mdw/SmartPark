@@ -1,0 +1,363 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>SmartPark Operations</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --page: #f3f6f4;
+      --surface: #ffffff;
+      --ink: #17231d;
+      --muted: #627068;
+      --line: #dce5df;
+      --green: #087a50;
+      --green-soft: #e4f5ed;
+      --amber: #8a5b00;
+      --amber-soft: #fff2cf;
+      --red: #a33232;
+      --red-soft: #fdeaea;
+      --shadow: 0 12px 34px rgba(31, 53, 41, 0.08);
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      min-width: 320px;
+      background: var(--page);
+      color: var(--ink);
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont,
+        "Segoe UI", sans-serif;
+    }
+
+    header {
+      background: #123c2d;
+      color: #ffffff;
+    }
+
+    .header-inner, main {
+      width: min(1120px, calc(100% - 32px));
+      margin: 0 auto;
+    }
+
+    .header-inner {
+      min-height: 78px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 20px;
+    }
+
+    .brand { display: flex; align-items: center; gap: 12px; }
+
+    .brand-mark {
+      width: 38px;
+      height: 38px;
+      display: grid;
+      place-items: center;
+      border-radius: 10px;
+      background: #22a870;
+      font-size: 20px;
+      font-weight: 700;
+    }
+
+    h1 { margin: 0; font-size: 20px; font-weight: 600; }
+    .subtitle { margin: 3px 0 0; color: #c8ded4; font-size: 13px; }
+
+    .live-indicator {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 13px;
+      color: #d8eee4;
+    }
+
+    .live-dot {
+      width: 9px;
+      height: 9px;
+      border-radius: 50%;
+      background: #58db9f;
+      box-shadow: 0 0 0 4px rgba(88, 219, 159, 0.16);
+    }
+
+    main { padding: 28px 0 48px; }
+
+    .toolbar {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 16px;
+      margin-bottom: 20px;
+    }
+
+    .toolbar p { margin: 0; color: var(--muted); font-size: 14px; }
+
+    button {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--surface);
+      color: var(--ink);
+      padding: 9px 14px;
+      font: inherit;
+      font-size: 14px;
+      cursor: pointer;
+    }
+
+    button:hover { border-color: #9eb3a7; }
+    button:focus-visible { outline: 3px solid rgba(8, 122, 80, 0.25); }
+    button:disabled { cursor: wait; opacity: 0.65; }
+
+    .summary {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 16px;
+      margin-bottom: 24px;
+    }
+
+    .metric, .panel {
+      background: var(--surface);
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      box-shadow: var(--shadow);
+    }
+
+    .metric { padding: 20px; }
+    .metric-label { color: var(--muted); font-size: 13px; }
+    .metric-value {
+      display: block;
+      margin-top: 7px;
+      font-size: 30px;
+      line-height: 1;
+      font-weight: 650;
+      font-variant-numeric: tabular-nums;
+    }
+    .metric-note { margin-top: 8px; color: var(--muted); font-size: 12px; }
+
+    .panel { overflow: hidden; }
+
+    .panel-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      padding: 18px 20px;
+      border-bottom: 1px solid var(--line);
+    }
+
+    h2 { margin: 0; font-size: 16px; font-weight: 600; }
+    .legend { display: flex; gap: 14px; color: var(--muted); font-size: 12px; }
+    .legend span { display: inline-flex; align-items: center; gap: 6px; }
+    .key { width: 8px; height: 8px; border-radius: 50%; }
+    .key-known { background: var(--green); }
+    .key-unknown { background: var(--amber); }
+
+    .table-wrap { overflow-x: auto; }
+    table { width: 100%; border-collapse: collapse; }
+    th, td { padding: 13px 20px; text-align: left; border-bottom: 1px solid var(--line); }
+    th {
+      color: var(--muted);
+      background: #f9fbfa;
+      font-size: 12px;
+      font-weight: 600;
+      letter-spacing: 0.025em;
+      text-transform: uppercase;
+    }
+    td { font-size: 14px; }
+    tbody tr:last-child td { border-bottom: 0; }
+    .numeric { text-align: right; font-variant-numeric: tabular-nums; }
+
+    .status {
+      display: inline-flex;
+      align-items: center;
+      gap: 7px;
+      border-radius: 999px;
+      padding: 4px 9px;
+      font-size: 12px;
+      font-weight: 600;
+    }
+    .status::before { content: ""; width: 7px; height: 7px; border-radius: 50%; }
+    .status-known { color: var(--green); background: var(--green-soft); }
+    .status-known::before { background: var(--green); }
+    .status-unknown { color: var(--amber); background: var(--amber-soft); }
+    .status-unknown::before { background: var(--amber); }
+
+    .error {
+      display: none;
+      margin-bottom: 16px;
+      padding: 12px 14px;
+      border: 1px solid #efbaba;
+      border-radius: 9px;
+      background: var(--red-soft);
+      color: var(--red);
+      font-size: 14px;
+    }
+    .error.visible { display: block; }
+
+    @media (max-width: 700px) {
+      .summary { grid-template-columns: 1fr; }
+      .toolbar, .panel-header { align-items: flex-start; flex-direction: column; }
+      .header-inner { min-height: 92px; }
+      th, td { padding: 12px 14px; }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="header-inner">
+      <div class="brand">
+        <div class="brand-mark" aria-hidden="true">P</div>
+        <div>
+          <h1>SmartPark Operations</h1>
+          <p class="subtitle">Live platform overview</p>
+        </div>
+      </div>
+      <div class="live-indicator"><span class="live-dot"></span>Auto-refreshing</div>
+    </div>
+  </header>
+
+  <main>
+    <div class="toolbar">
+      <p id="last-updated" aria-live="polite">Loading operational data…</p>
+      <button id="refresh" type="button">Refresh now</button>
+    </div>
+
+    <div id="error" class="error" role="alert"></div>
+
+    <section class="summary" aria-label="Operational summary">
+      <article class="metric">
+        <span class="metric-label">Active users</span>
+        <strong id="active-users" class="metric-value">—</strong>
+        <div id="active-window" class="metric-note">Requests in the recent window</div>
+      </article>
+      <article class="metric">
+        <span class="metric-label">Known carparks</span>
+        <strong id="known-carparks" class="metric-value">—</strong>
+        <div class="metric-note">Carparks with a recorded inference</div>
+      </article>
+      <article class="metric">
+        <span class="metric-label">Available spaces</span>
+        <strong id="available-spaces" class="metric-value">—</strong>
+        <div class="metric-note">Across currently known carparks</div>
+      </article>
+    </section>
+
+    <section class="panel" aria-labelledby="carpark-heading">
+      <div class="panel-header">
+        <h2 id="carpark-heading">Carpark status</h2>
+        <div class="legend" aria-label="Status legend">
+          <span><i class="key key-known"></i>Known</span>
+          <span><i class="key key-unknown"></i>Not scanned</span>
+        </div>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th scope="col">Carpark</th>
+              <th scope="col">Status</th>
+              <th scope="col" class="numeric">Available</th>
+              <th scope="col" class="numeric">Confidence</th>
+              <th scope="col">Model</th>
+              <th scope="col">Last update</th>
+            </tr>
+          </thead>
+          <tbody id="carpark-rows">
+            <tr><td colspan="6">Loading carparks…</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+  </main>
+
+  <script>
+    const refreshButton = document.getElementById("refresh");
+    const errorBox = document.getElementById("error");
+
+    function setText(id, value) {
+      document.getElementById(id).textContent = value;
+    }
+
+    function displayTime(timestamp) {
+      if (timestamp === null || timestamp === undefined) return "—";
+      return new Date(timestamp * 1000).toLocaleString();
+    }
+
+    function makeCell(value, className = "") {
+      const cell = document.createElement("td");
+      cell.textContent = value;
+      if (className) cell.className = className;
+      return cell;
+    }
+
+    function renderCarparks(carparks) {
+      const rows = document.getElementById("carpark-rows");
+      rows.replaceChildren();
+
+      for (const carpark of carparks) {
+        const row = document.createElement("tr");
+        row.appendChild(makeCell(carpark.carpark_id));
+
+        const statusCell = document.createElement("td");
+        const status = document.createElement("span");
+        status.className = `status status-${carpark.status}`;
+        status.textContent = carpark.status === "known" ? "Known" : "Not scanned";
+        statusCell.appendChild(status);
+        row.appendChild(statusCell);
+
+        row.appendChild(makeCell(carpark.available_spaces ?? "—", "numeric"));
+        row.appendChild(makeCell(
+          carpark.confidence_score === null
+            ? "—"
+            : `${(carpark.confidence_score * 100).toFixed(1)}%`,
+          "numeric"
+        ));
+        row.appendChild(makeCell(carpark.model_version ?? "—"));
+        row.appendChild(makeCell(displayTime(carpark.updated_at)));
+        rows.appendChild(row);
+      }
+    }
+
+    async function getJson(path) {
+      const response = await fetch(path, { headers: { "Accept": "application/json" } });
+      if (!response.ok) throw new Error(`${path} returned HTTP ${response.status}`);
+      return response.json();
+    }
+
+    async function refreshDashboard() {
+      refreshButton.disabled = true;
+      try {
+        const [users, status] = await Promise.all([
+          getJson("/api/operator/active-users"),
+          getJson("/api/operator/carparks")
+        ]);
+
+        const known = status.carparks.filter(item => item.status === "known");
+        const available = known.reduce(
+          (total, item) => total + (item.available_spaces ?? 0), 0
+        );
+
+        setText("active-users", users.active_users);
+        setText("active-window", `Unique users in the last ${users.window_seconds} seconds`);
+        setText("known-carparks", `${known.length} / ${status.carparks.length}`);
+        setText("available-spaces", available);
+        setText("last-updated", `Updated ${new Date().toLocaleTimeString()}`);
+        renderCarparks(status.carparks);
+        errorBox.classList.remove("visible");
+        errorBox.textContent = "";
+      } catch (error) {
+        errorBox.textContent = `Dashboard refresh failed: ${error.message}`;
+        errorBox.classList.add("visible");
+        setText("last-updated", "Unable to refresh operational data");
+      } finally {
+        refreshButton.disabled = false;
+      }
+    }
+
+    refreshButton.addEventListener("click", refreshDashboard);
+    refreshDashboard();
+    window.setInterval(refreshDashboard, 5000);
+  </script>
+</body>
+</html>
