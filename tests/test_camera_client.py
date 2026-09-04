@@ -12,6 +12,7 @@ from app.services.camera_client import (
 )
 from camera_simulator.main import create_app as create_camera_app
 from camera_simulator.settings import CameraSettings
+from app.infrastructure.logging import request_log_context
 
 
 IMAGE_BYTES = b"camera-image-bytes"
@@ -48,6 +49,17 @@ async def test_camera_client_returns_valid_photo() -> None:
     assert photo.carpark_id == "CBD_001"
     assert photo.content == IMAGE_BYTES
     assert photo.media_type == "image/jpeg"
+
+
+@pytest.mark.anyio
+async def test_camera_client_forwards_request_context() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert request.headers["x-request-id"] == "request-123"
+        assert request.headers["x-user-uuid"] == "user-456"
+        return httpx.Response(200, json=valid_payload())
+
+    with request_log_context("request-123", "user-456"):
+        await make_client(handler).take_photo("CBD_001")
 
 
 @pytest.mark.anyio

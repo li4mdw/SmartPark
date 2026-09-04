@@ -31,6 +31,19 @@ def test_take_photo_returns_image_and_echoes_carpark_id(tmp_path: Path) -> None:
     assert payload["status"] == "success"
     assert payload["media_type"] == "image/jpeg"
     assert base64.b64decode(payload["image_base64"]) == JPEG_BYTES
+    assert response.headers["x-request-id"]
+
+
+def test_camera_preserves_supplied_request_id(tmp_path: Path) -> None:
+    (tmp_path / "snapshot.jpg").write_bytes(JPEG_BYTES)
+
+    response = make_client(tmp_path).get(
+        "/api/takephoto",
+        params={"carpark_id": "CBD_001"},
+        headers={"x-request-id": "trace-123"},
+    )
+
+    assert response.headers["x-request-id"] == "trace-123"
 
 
 def test_take_photo_rejects_invalid_carpark_id(tmp_path: Path) -> None:

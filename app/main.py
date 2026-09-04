@@ -14,7 +14,7 @@ from app.api.health import router as health_router
 from app.api.operator import router as operator_router
 from app.infrastructure.http import create_http_client
 from app.infrastructure.concurrency import InferenceExecutor
-from app.infrastructure.logging import configure_logging
+from app.infrastructure.logging import configure_logging, request_log_context
 from app.infrastructure.redis import create_redis_client
 from app.infrastructure.settings import Settings
 from app.repositories.carpark_status import CarparkStatusRepository
@@ -140,30 +140,62 @@ def create_app(
     app.state.ready = False
 
     @app.middleware("http")
-    async def record_core_request(request, call_next):
-        request_id = request.headers.get("x-request-id") or str(uuid4())
+    async def observe_request(request, call_next):
+        supplied_request_id = request.headers.get("x-request-id", "")
+        request_id = (
+            supplied_request_id
+            if 1 <= len(supplied_request_id) <= 128
+            else str(uuid4())
+        )
+        user_uuid = request.query_params.get("uuid")
+        if user_uuid is not None and not 1 <= len(user_uuid) <= 128:
+            user_uuid = None
         request.state.request_id = request_id
         started = perf_counter()
-        response = await call_next(request)
-        response.headers["x-request-id"] = request_id
-
-        core_routes = {"/api/find-carparks", "/api/annotate-carpark"}
-        if request.url.path in core_routes:
-            user_uuid = request.query_params.get("uuid")
+        with request_log_context(request_id, user_uuid):
             try:
-                await request_log_repository.record_request(
-                    request_id=request_id,
-                    uuid=user_uuid,
-                    route=request.url.path,
-                    status_code=response.status_code,
-                    duration_ms=(perf_counter() - started) * 1000,
-                )
+                response = await call_next(request)
             except Exception:
                 logger.exception(
-                    "request_log_write_failed",
-                    extra={"request_id": request_id, "uuid": user_uuid},
+                    "http_request_failed",
+                    extra={
+                        "http_method": request.method,
+                        "http_path": request.url.path,
+                        "http_status": 500,
+                        "duration_ms": round(
+                            (perf_counter() - started) * 1000, 2
+                        ),
+                    },
                 )
-        return response
+                raise
+
+            response.headers["x-request-id"] = request_id
+            duration_ms = (perf_counter() - started) * 1000
+
+            core_routes = {"/api/find-carparks", "/api/annotate-carpark"}
+            if request.url.path in core_routes:
+                try:
+                    await request_log_repository.record_request(
+                        request_id=request_id,
+                        uuid=user_uuid,
+                        route=request.url.path,
+                        status_code=response.status_code,
+                        duration_ms=duration_ms,
+                    )
+                except Exception:
+                    logger.exception("request_log_write_failed")
+
+            logger.info(
+                "http_request_completed",
+                extra={
+                    "http_method": request.method,
+                    "http_path": request.url.path,
+                    "http_status": response.status_code,
+                    "duration_ms": round(duration_ms, 2),
+                    "client_ip": request.client.host if request.client else None,
+                },
+            )
+            return response
 
     app.include_router(core_router)
     app.include_router(health_router)

@@ -109,3 +109,23 @@ is safe and faster with a higher value.
 SmartPark requires a reachable Redis server during startup. Redis stores recent
 user activity, request events, latest car-park inference status, and short-lived
 search cache entries. All SmartPark replicas must use the same `REDIS_URL`.
+
+## Logging and request tracing
+
+SmartPark and the camera simulator emit one-line JSON application logs. Every
+HTTP request receives an `x-request-id`; a valid caller-provided value is
+preserved, otherwise the service generates one. SmartPark returns this ID to the
+client and forwards it, together with the user UUID when available, to the
+camera simulator.
+
+Completed-request logs include the HTTP method, path, response status, duration,
+client address, request ID, and user UUID when available. Service logs emitted
+during that request inherit the same correlation fields. Image bytes and base64
+response bodies are never written to logs.
+
+Uvicorn's default access log may be disabled to avoid a second, non-JSON access
+line because the application already records structured access events:
+
+```text
+python -m uvicorn app.main:app --port 8000 --no-access-log
+```

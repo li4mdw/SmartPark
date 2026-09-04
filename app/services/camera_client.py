@@ -7,6 +7,7 @@ import httpx
 from pydantic import ValidationError
 
 from app.schemas.camera import CameraPhotoPayload
+from app.infrastructure.logging import outbound_trace_headers
 
 
 class CameraClientError(RuntimeError):
@@ -51,6 +52,7 @@ class CameraClient:
                 response = await self._http_client.get(
                     "/api/takephoto",
                     params={"carpark_id": carpark_id},
+                    headers=outbound_trace_headers(),
                 )
         except httpx.TimeoutException as exc:
             raise CameraTimeoutError(f"Camera timed out for {carpark_id}") from exc
