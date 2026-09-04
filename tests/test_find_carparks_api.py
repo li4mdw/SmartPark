@@ -117,3 +117,16 @@ def test_find_carparks_records_request_and_returns_request_id() -> None:
     event = redis.streams["smartpark:request_events"][0]
     assert event["request_id"] == "request-test-1"
     assert event["status_code"] == "200"
+
+
+def test_invalid_request_id_is_replaced() -> None:
+    with make_client() as client:
+        response = client.get(
+            "/api/find-carparks",
+            params={"uuid": "unique-user-id-12345", "n": 2},
+            headers={"x-request-id": "invalid request id"},
+        )
+
+    assert response.status_code == 200
+    assert response.headers["x-request-id"] != "invalid request id"
+    assert " " not in response.headers["x-request-id"]

@@ -14,7 +14,11 @@ from app.api.health import router as health_router
 from app.api.operator import router as operator_router
 from app.infrastructure.http import create_http_client
 from app.infrastructure.concurrency import InferenceExecutor
-from app.infrastructure.logging import configure_logging, request_log_context
+from app.infrastructure.logging import (
+    configure_logging,
+    request_log_context,
+    valid_correlation_id,
+)
 from app.infrastructure.redis import create_redis_client
 from app.infrastructure.settings import Settings
 from app.repositories.carpark_status import CarparkStatusRepository
@@ -141,15 +145,11 @@ def create_app(
 
     @app.middleware("http")
     async def observe_request(request, call_next):
-        supplied_request_id = request.headers.get("x-request-id", "")
-        request_id = (
-            supplied_request_id
-            if 1 <= len(supplied_request_id) <= 128
-            else str(uuid4())
+        supplied_request_id = valid_correlation_id(
+            request.headers.get("x-request-id")
         )
-        user_uuid = request.query_params.get("uuid")
-        if user_uuid is not None and not 1 <= len(user_uuid) <= 128:
-            user_uuid = None
+        request_id = supplied_request_id or str(uuid4())
+        user_uuid = valid_correlation_id(request.query_params.get("uuid"))
         request.state.request_id = request_id
         started = perf_counter()
         with request_log_context(request_id, user_uuid):
@@ -170,6 +170,21 @@ def create_app(
                 raise
 
             response.headers["x-request-id"] = request_id
+            response.headers["x-content-type-options"] = "nosniff"
+            response.headers["x-frame-options"] = "DENY"
+            response.headers["referrer-policy"] = "no-referrer"
+            response.headers["permissions-policy"] = (
+                "camera=(), microphone=(), geolocation=()"
+            )
+            if request.url.path.startswith(("/api/", "/health/")):
+                response.headers["cache-control"] = "no-store"
+            if request.url.path == "/dashboard":
+                response.headers["content-security-policy"] = (
+                    "default-src 'self'; style-src 'self' 'unsafe-inline'; "
+                    "script-src 'self' 'unsafe-inline'; connect-src 'self'; "
+                    "img-src 'self'; frame-ancestors 'none'; base-uri 'none'"
+                )
+                response.headers["cache-control"] = "no-cache"
             duration_ms = (perf_counter() - started) * 1000
 
             core_routes = {"/api/find-carparks", "/api/annotate-carpark"}

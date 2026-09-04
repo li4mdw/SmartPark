@@ -28,6 +28,8 @@ def test_liveness_endpoint() -> None:
 
     assert response.status_code == 200
     assert response.json() == {"status": "alive", "service": "smartpark-api"}
+    assert response.headers["cache-control"] == "no-store"
+    assert response.headers["x-content-type-options"] == "nosniff"
 
 
 def test_readiness_endpoint_after_startup() -> None:

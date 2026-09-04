@@ -23,13 +23,13 @@ class CameraImage:
 class ImageRepository:
     def __init__(self, dataset_path: Path) -> None:
         self._dataset_path = dataset_path
+        self._image_paths = self._find_images()
 
     def take_random(self) -> CameraImage:
-        image_paths = self._find_images()
-        if not image_paths:
+        if not self._image_paths:
             raise ImageRepositoryError("No supported images are available")
 
-        image_path = secrets.choice(image_paths)
+        image_path = secrets.choice(self._image_paths)
         try:
             content = image_path.read_bytes()
         except OSError as exc:

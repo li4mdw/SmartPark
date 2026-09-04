@@ -11,6 +11,7 @@ from app.infrastructure.logging import (
     JsonFormatter,
     RequestContextFilter,
     request_log_context,
+    valid_correlation_id,
 )
 from camera_simulator.image_repository import ImageRepository, ImageRepositoryError
 from camera_simulator.schemas import (
@@ -45,15 +46,11 @@ def create_app(settings: CameraSettings | None = None) -> FastAPI:
 
     @app.middleware("http")
     async def observe_request(request: Request, call_next):
-        supplied_request_id = request.headers.get("x-request-id", "")
-        request_id = (
-            supplied_request_id
-            if 1 <= len(supplied_request_id) <= 128
-            else str(uuid4())
+        supplied_request_id = valid_correlation_id(
+            request.headers.get("x-request-id")
         )
-        user_uuid = request.headers.get("x-user-uuid")
-        if user_uuid is not None and not 1 <= len(user_uuid) <= 128:
-            user_uuid = None
+        request_id = supplied_request_id or str(uuid4())
+        user_uuid = valid_correlation_id(request.headers.get("x-user-uuid"))
         started = perf_counter()
 
         with request_log_context(request_id, user_uuid):
@@ -74,6 +71,9 @@ def create_app(settings: CameraSettings | None = None) -> FastAPI:
                 raise
             duration_ms = (perf_counter() - started) * 1000
             response.headers["x-request-id"] = request_id
+            response.headers["x-content-type-options"] = "nosniff"
+            response.headers["x-frame-options"] = "DENY"
+            response.headers["cache-control"] = "no-store"
             logger.info(
                 "http_request_completed",
                 extra={

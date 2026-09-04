@@ -1,5 +1,6 @@
 import json
 import logging
+import re
 from contextlib import contextmanager
 from contextvars import ContextVar
 from datetime import UTC, datetime
@@ -10,6 +11,7 @@ from typing import Any
 _STANDARD_RECORD_FIELDS = set(logging.makeLogRecord({}).__dict__)
 _request_id_context: ContextVar[str | None] = ContextVar("request_id", default=None)
 _user_uuid_context: ContextVar[str | None] = ContextVar("user_uuid", default=None)
+_CORRELATION_ID_PATTERN = re.compile(r"^[A-Za-z0-9._:-]{1,128}$")
 
 
 class RequestContextFilter(logging.Filter):
@@ -48,6 +50,12 @@ def outbound_trace_headers() -> dict[str, str]:
     if user_uuid is not None:
         headers["x-user-uuid"] = user_uuid
     return headers
+
+
+def valid_correlation_id(value: str | None) -> str | None:
+    if value is None or _CORRELATION_ID_PATTERN.fullmatch(value) is None:
+        return None
+    return value
 
 
 class JsonFormatter(logging.Formatter):

@@ -1,6 +1,8 @@
 from dataclasses import dataclass
+import logging
 import os
 from pathlib import Path
+from urllib.parse import urlparse
 
 
 _RELEASE_ROOT = Path(__file__).resolve().parents[2]
@@ -27,6 +29,41 @@ class Settings:
     redis_url: str = "redis://127.0.0.1:6379/0"
     recent_user_window_seconds: int = 30
     search_cache_ttl_seconds: int = DEFAULT_SEARCH_CACHE_TTL_SECONDS
+
+    def __post_init__(self) -> None:
+        if self.log_level not in logging._nameToLevel:
+            raise ValueError("LOG_LEVEL must be a valid Python logging level")
+        if not self.model_version.strip():
+            raise ValueError("MODEL_VERSION cannot be empty")
+        if self.available_class_id < 0:
+            raise ValueError("AVAILABLE_CLASS_ID cannot be negative")
+        if self.max_image_bytes < 1:
+            raise ValueError("MAX_IMAGE_BYTES must be at least 1")
+        if not 10 <= self.carpark_count <= 99:
+            raise ValueError("CARPARK_COUNT must be between 10 and 99")
+
+        positive_values = {
+            "CAMERA_CONNECT_TIMEOUT_SECONDS": self.camera_connect_timeout_seconds,
+            "CAMERA_READ_TIMEOUT_SECONDS": self.camera_read_timeout_seconds,
+            "CAMERA_CONCURRENCY": self.camera_concurrency,
+            "INFERENCE_CONCURRENCY": self.inference_concurrency,
+            "SEARCH_TIMEOUT_SECONDS": self.search_timeout_seconds,
+            "RECENT_USER_WINDOW_SECONDS": self.recent_user_window_seconds,
+            "SEARCH_CACHE_TTL_SECONDS": self.search_cache_ttl_seconds,
+        }
+        for name, value in positive_values.items():
+            if value <= 0:
+                raise ValueError(f"{name} must be greater than 0")
+
+        self._validate_url("CAMERA_BASE_URL", self.camera_base_url, {"http", "https"})
+        self._validate_url("REDIS_URL", self.redis_url, {"redis", "rediss"})
+
+    @staticmethod
+    def _validate_url(name: str, value: str, schemes: set[str]) -> None:
+        parsed = urlparse(value)
+        if parsed.scheme not in schemes or not parsed.hostname:
+            allowed = ", ".join(sorted(schemes))
+            raise ValueError(f"{name} must use {allowed} and include a hostname")
 
     @classmethod
     def from_environment(cls) -> "Settings":

@@ -28,6 +28,8 @@ def test_dashboard_is_served_as_html() -> None:
     assert "SmartPark Operations" in response.text
     assert "/api/operator/active-users" in response.text
     assert "/api/operator/carparks" in response.text
+    assert response.headers["x-frame-options"] == "DENY"
+    assert "frame-ancestors 'none'" in response.headers["content-security-policy"]
 
 
 def test_dashboard_is_not_listed_as_an_api_operation() -> None:
