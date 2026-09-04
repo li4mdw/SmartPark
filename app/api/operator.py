@@ -5,6 +5,8 @@ from app.schemas.operator import (
     OperatorCarparksResponse,
     OperatorCarparkStatus,
 )
+from app.schemas.model import ModelInfoResponse
+from app.services.model_manager import ModelManager
 from app.services.operator import OperatorService
 
 
@@ -13,6 +15,10 @@ router = APIRouter(prefix="/api/operator", tags=["operator"])
 
 def get_operator_service(request: Request) -> OperatorService:
     return request.app.state.operator_service
+
+
+def get_model_manager(request: Request) -> ModelManager:
+    return request.app.state.model_manager
 
 
 @router.get("/carparks", response_model=OperatorCarparksResponse)
@@ -53,4 +59,16 @@ async def active_users(
     return ActiveUsersResponse(
         window_seconds=service.recent_user_window_seconds,
         active_users=await service.count_active_users(),
+    )
+
+
+@router.get("/model", response_model=ModelInfoResponse)
+async def model_info(
+    model: ModelManager = Depends(get_model_manager),
+) -> ModelInfoResponse:
+    return ModelInfoResponse(
+        model_version=model.model_version,
+        model_format=model.model_format.value,
+        model_path=str(model.model_path),
+        loaded=model.is_loaded,
     )

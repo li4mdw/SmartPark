@@ -68,7 +68,9 @@ async def test_carpark_status_repository_saves_and_lists_latest() -> None:
 @pytest.mark.anyio
 async def test_search_cache_round_trip_and_ttl() -> None:
     redis = InMemoryRedis()
-    repository = SearchCacheRepository(redis, ttl_seconds=5)
+    repository = SearchCacheRepository(
+        redis, ttl_seconds=5, model_version="test-model-v2"
+    )
     result = CarparkSearchResult(
         uuid="user-1",
         requested_n=1,
@@ -81,7 +83,9 @@ async def test_search_cache_round_trip_and_ttl() -> None:
     cached = await repository.get("user-1", 1)
 
     assert cached == result
-    assert redis.expiries["smartpark:search_cache:user-1:1"] == 5
+    assert redis.expiries[
+        "smartpark:search_cache:test-model-v2:user-1:1"
+    ] == 5
 
 
 @pytest.mark.anyio
@@ -89,3 +93,22 @@ async def test_search_cache_miss_returns_none() -> None:
     repository = SearchCacheRepository(InMemoryRedis(), ttl_seconds=5)
 
     assert await repository.get("missing-user", 2) is None
+
+
+@pytest.mark.anyio
+async def test_search_cache_is_isolated_by_model_version() -> None:
+    redis = InMemoryRedis()
+    old_model_cache = SearchCacheRepository(redis, 30, "model-v1")
+    new_model_cache = SearchCacheRepository(redis, 30, "model-v2")
+    result = CarparkSearchResult(
+        uuid="user-1",
+        requested_n=1,
+        total_inference_ms=10.0,
+        results=(RankedCarpark("CBD_001", 5, 0.9),),
+        failed_carparks=0,
+    )
+
+    await old_model_cache.set(result)
+
+    assert await old_model_cache.get("user-1", 1) == result
+    assert await new_model_cache.get("user-1", 1) is None

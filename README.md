@@ -69,13 +69,34 @@ python -m pytest
 | `SEARCH_TIMEOUT_SECONDS` | `60.0` |
 | `REDIS_URL` | `redis://127.0.0.1:6379/0` |
 | `RECENT_USER_WINDOW_SECONDS` | `30` |
-| `SEARCH_CACHE_TTL_SECONDS` | `5` |
+| `SEARCH_CACHE_TTL_SECONDS` | `30` |
 | `CAMERA_DATASET_PATH` | `<release>/images` |
 | `CAMERA_LOG_LEVEL` | `INFO` |
 
 `MODEL_PATH` may reference either the supplied `.pt` model or the supplied
 `.onnx` export. The `.pt` model is the default. Only one model is loaded per
 SmartPark process.
+
+### Updating the model without rebuilding SmartPark
+
+Keep model weights outside the application image and mount them into the
+container at runtime. Configure each deployment using `MODEL_PATH` and give
+every model release a distinct `MODEL_VERSION`:
+
+```text
+MODEL_PATH=/models/model.pt
+MODEL_VERSION=parking-yolo-2026-09
+```
+
+To release a replacement model, place the new `.pt` or `.onnx` file in the
+mounted model location, update `MODEL_PATH` and `MODEL_VERSION` if required,
+then perform a rolling restart of the SmartPark pods. Each replacement pod
+loads and validates the model before becoming ready. The container image does
+not need to be rebuilt.
+
+Use `GET /api/operator/model` to confirm the version, format, configured path,
+and loaded state for the responding pod. Search-cache keys include the model
+version, so results produced by an old model are not served after an update.
 
 `CARPARK_COUNT` must be between 10 and 99. SmartPark generates logical IDs from
 `CBD_001` through `CBD_N` and rejects IDs outside the active range.

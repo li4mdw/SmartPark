@@ -8,6 +8,8 @@ from tests.fakes import InMemoryRedis
 class FakeModelManager:
     model_version = "test-model"
     model_format = SimpleNamespace(value="pt")
+    model_path = "test-model.pt"
+    is_loaded = True
 
     def load(self) -> None:
         pass
@@ -45,3 +47,14 @@ def test_readiness_endpoint_before_startup() -> None:
         "status": "not_ready",
         "service": "smartpark-api",
     }
+
+
+def test_readiness_fails_when_model_is_not_loaded() -> None:
+    application = make_app()
+
+    with TestClient(application) as client:
+        application.state.model_manager.is_loaded = False
+        response = client.get("/health/ready")
+
+    assert response.status_code == 503
+    assert response.json()["status"] == "not_ready"

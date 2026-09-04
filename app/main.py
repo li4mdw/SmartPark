@@ -56,6 +56,7 @@ def create_app(
     search_cache_repository = SearchCacheRepository(
         shared_redis,
         app_settings.search_cache_ttl_seconds,
+        app_settings.model_version,
     )
     operator_service = OperatorService(
         carpark_registry,

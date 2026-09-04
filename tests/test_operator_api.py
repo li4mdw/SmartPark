@@ -11,6 +11,8 @@ from tests.fakes import InMemoryRedis
 class FakeModelManager:
     model_version = "test-model"
     model_format = SimpleNamespace(value="pt")
+    model_path = "C:/models/test-model.pt"
+    is_loaded = True
 
     def load(self) -> None:
         pass
@@ -74,4 +76,24 @@ def test_operator_active_users_counts_unique_recent_find_requests() -> None:
         "msg": "success",
         "window_seconds": 30,
         "active_users": 2,
+    }
+
+
+def test_operator_model_reports_loaded_runtime_model() -> None:
+    application = create_app(
+        model_manager=FakeModelManager(),
+        redis_client=InMemoryRedis(),
+    )
+
+    with TestClient(application) as client:
+        response = client.get("/api/operator/model")
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "status": "success",
+        "msg": "success",
+        "model_version": "test-model",
+        "model_format": "pt",
+        "model_path": "C:/models/test-model.pt",
+        "loaded": True,
     }
