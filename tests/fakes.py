@@ -87,3 +87,14 @@ class RecordingStatusRepository:
 
     async def save_latest(self, **status) -> None:
         self.saved.append(status)
+
+
+class EmptySearchCache:
+    def __init__(self) -> None:
+        self.saved = []
+
+    async def get(self, uuid: str, n: int):
+        return None
+
+    async def set(self, result) -> None:
+        self.saved.append(result)

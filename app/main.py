@@ -81,6 +81,7 @@ def create_app(
         inference_executor,
         app_settings.search_timeout_seconds,
         status_repository,
+        search_cache_repository,
     )
     configure_logging(app_settings.log_level)
 
@@ -116,6 +117,9 @@ def create_app(
                     "carpark_count": carpark_registry.count,
                     "camera_concurrency": app_settings.camera_concurrency,
                     "inference_concurrency": inference_executor.max_concurrency,
+                    "search_cache_ttl_seconds": (
+                        app_settings.search_cache_ttl_seconds
+                    ),
                 },
             )
             yield

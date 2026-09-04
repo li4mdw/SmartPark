@@ -28,8 +28,14 @@ class SearchStatusWriter(Protocol):
     async def save_latest(self, **status) -> None: ...
 
 
+class SearchResultCache(Protocol):
+    async def get(self, uuid: str, n: int) -> CarparkSearchResult | None: ...
+
+    async def set(self, result: CarparkSearchResult) -> None: ...
+
+
 class CarparkSearchService:
-    """Sequential baseline for querying and ranking logical car parks."""
+    """Query, rank, and briefly cache car-park search results."""
 
     def __init__(
         self,
@@ -39,6 +45,7 @@ class CarparkSearchService:
         inference_executor: InferenceExecutor,
         search_timeout_seconds: float,
         status_repository: SearchStatusWriter,
+        search_cache: SearchResultCache,
     ) -> None:
         if search_timeout_seconds <= 0:
             raise ValueError("SEARCH_TIMEOUT_SECONDS must be greater than 0")
@@ -48,6 +55,7 @@ class CarparkSearchService:
         self._inference_executor = inference_executor
         self._search_timeout_seconds = search_timeout_seconds
         self._status_repository = status_repository
+        self._search_cache = search_cache
 
     async def find(self, uuid: str, n: int) -> CarparkSearchResult:
         query_count = 2 * n
@@ -61,6 +69,22 @@ class CarparkSearchService:
                     "2 × n car parks must be queried"
                 ),
             )
+
+        try:
+            cached_result = await self._search_cache.get(uuid, n)
+        except Exception:
+            cached_result = None
+            logger.exception(
+                "carpark_search_cache_read_failed",
+                extra={"uuid": uuid, "requested_n": n},
+            )
+
+        if cached_result is not None:
+            logger.info(
+                "carpark_search_cache_hit",
+                extra={"uuid": uuid, "requested_n": n},
+            )
+            return cached_result
 
         selected_ids = self._registry.sample(query_count)
         successful: list[RankedCarpark] = []
@@ -151,10 +175,18 @@ class CarparkSearchService:
                 "inference_ms": round(total_inference_ms, 2),
             },
         )
-        return CarparkSearchResult(
+        result = CarparkSearchResult(
             uuid=uuid,
             requested_n=n,
             total_inference_ms=round(total_inference_ms, 2),
             results=top_results,
             failed_carparks=failed_carparks,
         )
+        try:
+            await self._search_cache.set(result)
+        except Exception:
+            logger.exception(
+                "carpark_search_cache_write_failed",
+                extra={"uuid": uuid, "requested_n": n},
+            )
+        return result

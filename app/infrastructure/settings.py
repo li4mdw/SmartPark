@@ -4,6 +4,7 @@ from pathlib import Path
 
 
 _RELEASE_ROOT = Path(__file__).resolve().parents[2]
+DEFAULT_SEARCH_CACHE_TTL_SECONDS = 30
 
 
 @dataclass(frozen=True, slots=True)
@@ -25,7 +26,7 @@ class Settings:
     search_timeout_seconds: float = 60.0
     redis_url: str = "redis://127.0.0.1:6379/0"
     recent_user_window_seconds: int = 30
-    search_cache_ttl_seconds: int = 5
+    search_cache_ttl_seconds: int = DEFAULT_SEARCH_CACHE_TTL_SECONDS
 
     @classmethod
     def from_environment(cls) -> "Settings":
@@ -55,5 +56,10 @@ class Settings:
             recent_user_window_seconds=int(
                 os.getenv("RECENT_USER_WINDOW_SECONDS", "30")
             ),
-            search_cache_ttl_seconds=int(os.getenv("SEARCH_CACHE_TTL_SECONDS", "5")),
+            search_cache_ttl_seconds=int(
+                os.getenv(
+                    "SEARCH_CACHE_TTL_SECONDS",
+                    str(DEFAULT_SEARCH_CACHE_TTL_SECONDS),
+                )
+            ),
         )

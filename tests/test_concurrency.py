@@ -11,7 +11,7 @@ from app.errors import ApplicationError
 from app.infrastructure.concurrency import InferenceExecutor
 from app.services.camera_client import CameraClient, CameraPhoto
 from app.services.carpark_search import CarparkSearchService
-from tests.fakes import RecordingStatusRepository
+from tests.fakes import EmptySearchCache, RecordingStatusRepository
 
 
 class Registry:
@@ -74,6 +74,7 @@ async def test_search_fetches_cameras_concurrently_and_bounds_inference() -> Non
         InferenceExecutor(max_concurrency=2),
         search_timeout_seconds=5.0,
         status_repository=RecordingStatusRepository(),
+        search_cache=EmptySearchCache(),
     )
 
     result = await service.find("concurrency-user", 3)
@@ -101,6 +102,7 @@ async def test_search_enforces_overall_timeout() -> None:
         InferenceExecutor(1),
         search_timeout_seconds=0.01,
         status_repository=RecordingStatusRepository(),
+        search_cache=EmptySearchCache(),
     )
 
     with pytest.raises(ApplicationError) as error:

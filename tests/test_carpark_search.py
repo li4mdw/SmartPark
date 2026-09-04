@@ -61,6 +61,26 @@ class FakeInferenceService:
         )
 
 
+class FakeSearchCache:
+    def __init__(self, cached_result=None, *, fail_reads=False, fail_writes=False):
+        self.cached_result = cached_result
+        self.fail_reads = fail_reads
+        self.fail_writes = fail_writes
+        self.get_calls: list[tuple[str, int]] = []
+        self.saved = []
+
+    async def get(self, uuid: str, n: int):
+        self.get_calls.append((uuid, n))
+        if self.fail_reads:
+            raise ConnectionError("cache unavailable")
+        return self.cached_result
+
+    async def set(self, result) -> None:
+        if self.fail_writes:
+            raise ConnectionError("cache unavailable")
+        self.saved.append(result)
+
+
 def make_service(
     registry: FakeRegistry,
     camera: FakeCameraClient,
@@ -68,6 +88,7 @@ def make_service(
     inference_concurrency: int = 1,
     search_timeout_seconds: float = 5.0,
     status_repository=None,
+    search_cache=None,
 ) -> CarparkSearchService:
     return CarparkSearchService(
         registry,
@@ -76,6 +97,7 @@ def make_service(
         InferenceExecutor(inference_concurrency),
         search_timeout_seconds,
         status_repository or RecordingStatusRepository(),
+        search_cache or FakeSearchCache(),
     )
 
 
@@ -84,7 +106,10 @@ async def test_search_queries_exactly_twice_n_and_ranks_results() -> None:
     registry = FakeRegistry()
     camera = FakeCameraClient()
     statuses = RecordingStatusRepository()
-    service = make_service(registry, camera, status_repository=statuses)
+    cache = FakeSearchCache()
+    service = make_service(
+        registry, camera, status_repository=statuses, search_cache=cache
+    )
 
     result = await service.find("user-123", 3)
 
@@ -99,6 +124,8 @@ async def test_search_queries_exactly_twice_n_and_ranks_results() -> None:
     assert result.total_inference_ms == 60.0
     assert result.failed_carparks == 0
     assert {item["carpark_id"] for item in statuses.saved} == set(registry.ids[:6])
+    assert cache.get_calls == [("user-123", 3)]
+    assert cache.saved == [result]
 
 
 @pytest.mark.anyio
@@ -143,3 +170,43 @@ async def test_search_rejects_n_when_twice_n_exceeds_range() -> None:
     assert error.value.code == "invalid_n"
     assert registry.sample_calls == []
     assert camera.calls == []
+
+
+@pytest.mark.anyio
+async def test_search_cache_hit_skips_camera_and_inference_work() -> None:
+    from app.schemas.search import CarparkSearchResult, RankedCarpark
+
+    registry = FakeRegistry()
+    camera = FakeCameraClient()
+    cached = CarparkSearchResult(
+        uuid="user-123",
+        requested_n=2,
+        total_inference_ms=40.0,
+        results=(
+            RankedCarpark("CBD_003", 10, 0.9),
+            RankedCarpark("CBD_002", 10, 0.8),
+        ),
+        failed_carparks=0,
+    )
+    cache = FakeSearchCache(cached)
+    service = make_service(registry, camera, search_cache=cache)
+
+    result = await service.find("user-123", 2)
+
+    assert result == cached
+    assert registry.sample_calls == []
+    assert camera.calls == []
+    assert cache.saved == []
+
+
+@pytest.mark.anyio
+async def test_search_continues_when_cache_is_unavailable() -> None:
+    registry = FakeRegistry()
+    camera = FakeCameraClient()
+    cache = FakeSearchCache(fail_reads=True, fail_writes=True)
+    service = make_service(registry, camera, search_cache=cache)
+
+    result = await service.find("user-123", 2)
+
+    assert len(result.results) == 2
+    assert len(camera.calls) == 4
