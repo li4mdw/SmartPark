@@ -7,6 +7,12 @@ class AnnotateCarparkQuery(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     carpark_id: str = Field(pattern=r"^CBD_[0-9]{3}$")
+    uuid: str | None = Field(
+        default=None,
+        min_length=1,
+        max_length=128,
+        pattern=r"^[A-Za-z0-9._:-]+$",
+    )
 
 
 class AnnotateCarparkResponse(BaseModel):

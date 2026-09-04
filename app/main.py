@@ -10,6 +10,7 @@ from fastapi import FastAPI
 from app.api.core import router as core_router
 from app.api.errors import register_exception_handlers
 from app.api.health import router as health_router
+from app.api.operator import router as operator_router
 from app.infrastructure.http import create_http_client
 from app.infrastructure.concurrency import InferenceExecutor
 from app.infrastructure.logging import configure_logging
@@ -24,6 +25,7 @@ from app.services.carpark_registry import CarparkRegistry
 from app.services.carpark_search import CarparkSearchService
 from app.services.inference import InferenceService
 from app.services.model_manager import ModelManager
+from app.services.operator import OperatorService
 
 
 logger = logging.getLogger(__name__)
@@ -53,6 +55,12 @@ def create_app(
     search_cache_repository = SearchCacheRepository(
         shared_redis,
         app_settings.search_cache_ttl_seconds,
+    )
+    operator_service = OperatorService(
+        carpark_registry,
+        status_repository,
+        request_log_repository,
+        app_settings.recent_user_window_seconds,
     )
     inference_service = InferenceService(
         inference_model,
@@ -98,6 +106,7 @@ def create_app(
             app.state.request_log_repository = request_log_repository
             app.state.carpark_status_repository = status_repository
             app.state.search_cache_repository = search_cache_repository
+            app.state.operator_service = operator_service
             app.state.ready = True
             logger.info(
                 "application_ready",
@@ -132,26 +141,27 @@ def create_app(
         response = await call_next(request)
         response.headers["x-request-id"] = request_id
 
-        if request.url.path == "/api/find-carparks":
+        core_routes = {"/api/find-carparks", "/api/annotate-carpark"}
+        if request.url.path in core_routes:
             user_uuid = request.query_params.get("uuid")
-            if user_uuid:
-                try:
-                    await request_log_repository.record_request(
-                        request_id=request_id,
-                        uuid=user_uuid,
-                        route=request.url.path,
-                        status_code=response.status_code,
-                        duration_ms=(perf_counter() - started) * 1000,
-                    )
-                except Exception:
-                    logger.exception(
-                        "request_log_write_failed",
-                        extra={"request_id": request_id, "uuid": user_uuid},
-                    )
+            try:
+                await request_log_repository.record_request(
+                    request_id=request_id,
+                    uuid=user_uuid,
+                    route=request.url.path,
+                    status_code=response.status_code,
+                    duration_ms=(perf_counter() - started) * 1000,
+                )
+            except Exception:
+                logger.exception(
+                    "request_log_write_failed",
+                    extra={"request_id": request_id, "uuid": user_uuid},
+                )
         return response
 
     app.include_router(core_router)
     app.include_router(health_router)
+    app.include_router(operator_router)
     register_exception_handlers(app)
     return app
 

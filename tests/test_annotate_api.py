@@ -76,3 +76,50 @@ def test_annotate_endpoint_rejects_id_outside_configured_range() -> None:
         "msg": "The requested car park does not exist",
         "error": {"code": "carpark_not_found"},
     }
+
+
+def test_annotate_request_is_logged_and_uuid_counts_as_active_user() -> None:
+    redis = InMemoryRedis()
+    application = create_app(
+        model_manager=FakeModelManager(), redis_client=redis
+    )
+    application.dependency_overrides[get_annotation_service] = (
+        lambda: FakeAnnotationService()
+    )
+
+    with TestClient(application) as client:
+        response = client.get(
+            "/api/annotate-carpark",
+            params={"carpark_id": "CBD_007", "uuid": "user-annotate-1"},
+            headers={"x-request-id": "annotation-request-1"},
+        )
+
+    assert response.status_code == 200
+    assert redis.sorted_sets["smartpark:recent_users"].keys() == {
+        "user-annotate-1"
+    }
+    event = redis.streams["smartpark:request_events"][0]
+    assert event["route"] == "/api/annotate-carpark"
+    assert event["uuid"] == "user-annotate-1"
+
+
+def test_annotate_without_uuid_is_logged_without_creating_a_user() -> None:
+    redis = InMemoryRedis()
+    application = create_app(
+        model_manager=FakeModelManager(), redis_client=redis
+    )
+    application.dependency_overrides[get_annotation_service] = (
+        lambda: FakeAnnotationService()
+    )
+
+    with TestClient(application) as client:
+        response = client.get(
+            "/api/annotate-carpark",
+            params={"carpark_id": "CBD_007"},
+        )
+
+    assert response.status_code == 200
+    assert not redis.sorted_sets["smartpark:recent_users"]
+    event = redis.streams["smartpark:request_events"][0]
+    assert event["route"] == "/api/annotate-carpark"
+    assert event["uuid"] == ""

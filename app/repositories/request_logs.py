@@ -6,7 +6,7 @@ from typing import Any
 @dataclass(frozen=True, slots=True)
 class RequestEvent:
     request_id: str
-    uuid: str
+    uuid: str | None
     route: str
     status_code: int
     duration_ms: float
@@ -25,7 +25,7 @@ class RequestLogRepository:
         self,
         *,
         request_id: str,
-        uuid: str,
+        uuid: str | None,
         route: str,
         status_code: int,
         duration_ms: float,
@@ -33,12 +33,13 @@ class RequestLogRepository:
     ) -> None:
         event_time = timestamp if timestamp is not None else time.time()
         async with self._redis.pipeline(transaction=True) as pipeline:
-            pipeline.zadd(self.RECENT_USERS_KEY, {uuid: event_time})
+            if uuid is not None:
+                pipeline.zadd(self.RECENT_USERS_KEY, {uuid: event_time})
             pipeline.xadd(
                 self.REQUEST_EVENTS_KEY,
                 {
                     "request_id": request_id,
-                    "uuid": uuid,
+                    "uuid": uuid or "",
                     "route": route,
                     "status_code": str(status_code),
                     "duration_ms": f"{duration_ms:.2f}",
