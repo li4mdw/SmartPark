@@ -1,0 +1,9 @@
+# Use an allow-list so models, datasets, tests, notebooks, environments,
+# credentials, Git history, and local outputs never enter the build context.
+**
+
+!Dockerfile
+!.dockerignore
+!requirements.txt
+!app/
+!app/**

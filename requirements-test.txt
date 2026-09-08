@@ -1,0 +1,8 @@
+# Install this file only in a local/test environment, never in production images.
+-r requirements.txt
+--extra-index-url https://download.pytorch.org/whl/cpu
+torch==2.13.0+cpu
+torchvision==0.28.0+cpu
+ultralytics==8.4.135
+pytest==8.4.2
+uvicorn[standard]==0.52.4

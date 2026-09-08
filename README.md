@@ -5,10 +5,11 @@ camera simulator that returns random images from the supplied dataset.
 
 ## Run locally
 
-Create and activate a virtual environment, install the dependencies, then run:
+Create and activate a virtual environment, install the development dependencies,
+then run:
 
 ```text
-python -m pip install -r requirements.txt
+python -m pip install -r requirements-test.txt
 python -m uvicorn app.main:app --reload
 ```
 
@@ -128,4 +129,116 @@ line because the application already records structured access events:
 
 ```text
 python -m uvicorn app.main:app --port 8000 --no-access-log
+```
+
+## Production SmartPark image
+
+The production Docker build uses an allow-listed build context. Only the
+`app/` package and pinned production requirements are sent into the build. The
+model, image dataset, tests, virtual environment, notebooks, Git metadata, local
+outputs, and environment files are excluded.
+
+SmartPark uses the version-pinned `ultralytics/ultralytics:8.4.135-python`
+CPU image. SmartPark performs CPU inference, and this base already provides a
+compatible Ultralytics, PyTorch, and OpenCV stack. This keeps the Dockerfile
+shorter and avoids rebuilding the largest dependencies. A versioned tag is used
+instead of `latest` so that the same source produces a predictable environment.
+
+Build from this `release` directory:
+
+```text
+docker build --tag smartpark-api:1.0.0 .
+```
+
+The container runs as the non-root user `smartpark` (UID 10001), starts one
+Uvicorn worker, and exposes port 8000. Use one process per container and scale
+with Kubernetes replicas; extra Uvicorn workers would load another copy of the
+model into the same container.
+
+The image intentionally contains no model. Mount one read-only at `/models` and
+set its version. For local Docker testing while Redis and the camera simulator
+are exposed on the host:
+
+```powershell
+$modelDirectory = (Resolve-Path .\model).Path
+
+docker run --rm --name smartpark-api `
+  --publish 8000:8000 `
+  --mount "type=bind,source=$modelDirectory,target=/models,readonly" `
+  --env MODEL_PATH=/models/model.pt `
+  --env MODEL_VERSION=model-v1 `
+  --env REDIS_URL=redis://host.docker.internal:6379/0 `
+  --env CAMERA_BASE_URL=http://host.docker.internal:8001 `
+  smartpark-api:1.0.0
+```
+
+In Docker Compose or Kubernetes, replace `host.docker.internal` with the
+internal Service names, such as `redis` and `camera-simulator`. Do not expose
+Redis publicly.
+
+Verify the running container:
+
+```text
+curl http://localhost:8000/health/ready
+curl http://localhost:8000/api/operator/model
+```
+
+Inspect the image configuration and contents:
+
+```text
+docker image inspect smartpark-api:1.0.0
+docker run --rm --entrypoint sh smartpark-api:1.0.0 -c "find /app -maxdepth 3 -type f | sort"
+```
+
+### Camera and Redis containers
+
+SmartPark and the camera simulator have separate Dockerfiles because they have
+different source, dependencies, ports, and scaling behaviour. Redis uses the
+official `redis:7-alpine` image and does not need a custom Dockerfile.
+
+Build the camera simulator with its Dockerfile-specific allow-list:
+
+```text
+docker build --file camera.Dockerfile --tag smartpark-camera:1.0.0 .
+```
+
+The camera image contains `camera_simulator/`, its small shared logging module,
+and the required image dataset. It does not contain SmartPark's APIs, Redis
+client, tests, models, notebook, local environment, or result files.
+
+Create a private network and persistent Redis volume:
+
+```text
+docker network create smartpark-network
+docker volume create smartpark-redis-data
+```
+
+Start Redis and the camera simulator:
+
+```text
+docker run --detach --name smartpark-redis --network smartpark-network --volume smartpark-redis-data:/data redis:7-alpine redis-server --appendonly yes
+docker run --detach --name camera-simulator --network smartpark-network --publish 8001:8001 smartpark-camera:1.0.0
+```
+
+Start SmartPark on the same network with an externally mounted model:
+
+```powershell
+$modelDirectory = (Resolve-Path .\model).Path
+
+docker run --detach --name smartpark-api `
+  --network smartpark-network `
+  --publish 8000:8000 `
+  --mount "type=bind,source=$modelDirectory,target=/models,readonly" `
+  --env MODEL_PATH=/models/model.pt `
+  --env MODEL_VERSION=model-v1 `
+  --env REDIS_URL=redis://smartpark-redis:6379/0 `
+  --env CAMERA_BASE_URL=http://camera-simulator:8001 `
+  smartpark-api:1.0.0
+```
+
+The three-container request path is:
+
+```text
+Client -> SmartPark container -> Camera container
+                         \-----> Redis container -> persistent volume
 ```

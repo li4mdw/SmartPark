@@ -1,0 +1,14 @@
+# Exclude everything first, then allow only files needed by the camera image.
+**
+!camera.Dockerfile
+!camera.Dockerfile.dockerignore
+!requirements-camera.txt
+!camera_simulator/
+!camera_simulator/**
+!app/
+!app/__init__.py
+!app/infrastructure/
+!app/infrastructure/__init__.py
+!app/infrastructure/logging.py
+!images/
+!images/**
