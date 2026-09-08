@@ -242,3 +242,142 @@ The three-container request path is:
 Client -> SmartPark container -> Camera container
                          \-----> Redis container -> persistent volume
 ```
+
+## Run the complete application with Docker Compose
+
+Docker Compose is the simplest local workflow. It builds the two custom images,
+starts the official Redis image, creates the internal network, and mounts the
+model without copying it into the SmartPark image.
+
+Place the externally supplied model at `model/model.pt`, then run from the
+project root:
+
+```text
+docker compose up --build
+```
+
+Open `http://localhost:8000/docs`, `http://localhost:8000/dashboard`, or
+`http://localhost:8000/health/ready`. Stop the environment with:
+
+```text
+docker compose down
+```
+
+Redis data is retained in the `smartpark_redis-data` named volume. To remove
+that local data as well, use `docker compose down --volumes`.
+
+## Deploy to GKE
+
+The `kubernetes/` directory contains the camera, Redis, persistent storage,
+SmartPark, health probes, internal Services, public LoadBalancer, and HPA
+manifests. SmartPark uses these published images:
+
+```text
+australia-southeast2-docker.pkg.dev/causal-space-503901-p7/fit3184-a1/smartpark-api:v1
+australia-southeast2-docker.pkg.dev/causal-space-503901-p7/fit3184-a1/smartpark-camera:v1
+```
+
+Before applying the manifests:
+
+1. Enable Workload Identity Federation and the Cloud Storage FUSE CSI driver
+   on the Standard GKE cluster.
+2. Create the regional bucket `causal-space-503901-p7-smartpark-models`.
+3. Upload the model as `model-v1/model.pt`.
+4. Grant the `default/smartpark-model-reader` Kubernetes ServiceAccount the
+   `roles/storage.objectViewer` role on that bucket.
+
+The following commands perform that setup after the Standard cluster has been
+created. Run them from the machine where `gcloud` and `kubectl` are configured:
+
+```bash
+gcloud config set project causal-space-503901-p7
+
+gcloud storage buckets create \
+  gs://causal-space-503901-p7-smartpark-models \
+  --location=australia-southeast2 \
+  --uniform-bucket-level-access
+
+gcloud storage cp ./model/model.pt \
+  gs://causal-space-503901-p7-smartpark-models/model-v1/model.pt
+
+gcloud container clusters update fit3184-cluster \
+  --zone=australia-southeast2-a \
+  --workload-pool=causal-space-503901-p7.svc.id.goog
+
+gcloud container node-pools update default-pool \
+  --cluster=fit3184-cluster \
+  --zone=australia-southeast2-a \
+  --workload-metadata=GKE_METADATA
+
+gcloud container clusters update fit3184-cluster \
+  --zone=australia-southeast2-a \
+  --update-addons=GcsFuseCsiDriver=ENABLED
+
+gcloud container clusters get-credentials fit3184-cluster \
+  --zone=australia-southeast2-a
+
+PROJECT_NUMBER="$(gcloud projects describe causal-space-503901-p7 \
+  --format='value(projectNumber)')"
+
+gcloud storage buckets add-iam-policy-binding \
+  gs://causal-space-503901-p7-smartpark-models \
+  --member="principal://iam.googleapis.com/projects/${PROJECT_NUMBER}/locations/global/workloadIdentityPools/causal-space-503901-p7.svc.id.goog/subject/ns/default/sa/smartpark-model-reader" \
+  --role=roles/storage.objectViewer
+```
+
+Cloud Storage bucket names are globally unique. If a different bucket name is
+required, update `bucketName` in `kubernetes/smartpark-deployment.yaml` as well.
+
+Deploy the one-replica baseline environment:
+
+```text
+kubectl apply -k kubernetes
+kubectl rollout status deployment/redis
+kubectl rollout status deployment/camera-simulator
+kubectl rollout status deployment/smartpark-api
+kubectl port-forward deployment/smartpark-api 8000:8000
+```
+
+Run Locust against `http://localhost:8000` for the baseline. After collecting
+the one-replica measurements, test three manually selected replicas:
+
+```text
+kubectl scale deployment/smartpark-api --replicas=3
+kubectl rollout status deployment/smartpark-api
+```
+
+After recording the three-replica results, return to one replica, expose
+SmartPark, and enable autoscaling:
+
+```text
+kubectl scale deployment/smartpark-api --replicas=1
+kubectl apply -f kubernetes/smartpark-loadbalancer.yaml
+kubectl apply -f kubernetes/smartpark-hpa.yaml
+kubectl get service smartpark-public
+kubectl get hpa smartpark-api
+```
+
+The LoadBalancer's external IP can take several minutes to appear. The camera
+and Redis Services remain private inside the cluster.
+
+### Locust
+
+Install the test dependencies and start the Locust UI:
+
+```text
+python -m pip install -r requirements-test.txt
+python -m locust -f locust/locustfile.py --host http://localhost:8000
+```
+
+Set `SMARTPARK_SCENARIO` to `find`, `annotate`, or `mixed` before starting
+Locust. The benchmark script uses a fresh UUID for every request so Redis cache
+hits do not hide YOLO inference cost. Use the same user levels, ramp-up rate,
+and run duration for the 1, 2, 4, and 8 replica measurements.
+
+### Submission packaging
+
+The pretrained `.pt` and `.onnx` files must not be included in the submitted
+ZIP. Keep `model/README.md` so the assessor knows where to place or upload the
+external model. The model patterns in `.gitignore` prevent new model weights
+from being added, but any weights already tracked by Git must be removed from
+the ZIP or Git index separately.

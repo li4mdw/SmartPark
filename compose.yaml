@@ -1,0 +1,53 @@
+name: smartpark
+
+# Local three-service environment. Docker Compose builds the two application
+# images, starts Redis, creates service DNS names, and mounts the model read-only.
+services:
+  smartpark-api:
+    image: smartpark-api:local
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "8000:8000"
+    environment:
+      APP_ENV: development
+      MODEL_PATH: /models/model.pt
+      MODEL_VERSION: model-v1
+      CAMERA_BASE_URL: http://camera-simulator:8001
+      REDIS_URL: redis://redis:6379/0
+      SEARCH_CACHE_TTL_SECONDS: "30"
+    volumes:
+      # Put model.pt in ./model before starting Compose. It is not built into the image.
+      - ./model:/models:ro
+    depends_on:
+      camera-simulator:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+
+  camera-simulator:
+    image: smartpark-camera:local
+    build:
+      context: .
+      dockerfile: camera.Dockerfile
+    ports:
+      - "8001:8001"
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    restart: unless-stopped
+
+volumes:
+  # Named volume preserves Redis data when containers are recreated.
+  redis-data:

@@ -1,0 +1,40 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: camera-simulator
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: camera-simulator
+  template:
+    metadata:
+      labels:
+        app: camera-simulator
+    spec:
+      containers:
+        - name: camera-simulator
+          image: australia-southeast2-docker.pkg.dev/causal-space-503901-p7/fit3184-a1/smartpark-camera:v1
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 8001
+          readinessProbe:
+            httpGet:
+              path: /openapi.json
+              port: http
+            initialDelaySeconds: 3
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /openapi.json
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 20
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi

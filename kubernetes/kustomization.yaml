@@ -1,0 +1,16 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+# Apply the complete GKE deployment with: kubectl apply -k kubernetes
+resources:
+  - service-account.yaml
+  - redis-pvc.yaml
+  - redis-deployment.yaml
+  - redis-service.yaml
+  - camera-deployment.yaml
+  - camera-service.yaml
+  - smartpark-deployment.yaml
+  - smartpark-service.yaml
+
+# Apply smartpark-loadbalancer.yaml and smartpark-hpa.yaml separately after the
+# one-replica baseline test so autoscaling does not invalidate baseline results.

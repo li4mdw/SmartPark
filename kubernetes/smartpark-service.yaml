@@ -1,0 +1,13 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: smartpark-api
+spec:
+  # Internal service used during the one-replica baseline stage.
+  type: ClusterIP
+  selector:
+    app: smartpark-api
+  ports:
+    - name: http
+      port: 80
+      targetPort: http

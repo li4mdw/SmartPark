@@ -1,0 +1,77 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: smartpark-api
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: smartpark-api
+  template:
+    metadata:
+      labels:
+        app: smartpark-api
+      # GKE injects the sidecar that mounts the Cloud Storage bucket.
+      annotations:
+        gke-gcsfuse/volumes: "true"
+    spec:
+      serviceAccountName: smartpark-model-reader
+      containers:
+        - name: smartpark-api
+          image: australia-southeast2-docker.pkg.dev/causal-space-503901-p7/fit3184-a1/smartpark-api:v1
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 8000
+          env:
+            - name: APP_ENV
+              value: production
+            - name: MODEL_PATH
+              value: /models/model-v1/model.pt
+            - name: MODEL_VERSION
+              value: model-v1
+            - name: CAMERA_BASE_URL
+              value: http://camera-simulator:8001
+            - name: REDIS_URL
+              value: redis://redis:6379/0
+            - name: SEARCH_CACHE_TTL_SECONDS
+              value: "30"
+          volumeMounts:
+            - name: model-storage
+              mountPath: /models
+              readOnly: true
+          startupProbe:
+            httpGet:
+              path: /health/live
+              port: http
+            failureThreshold: 36
+            periodSeconds: 5
+          readinessProbe:
+            httpGet:
+              path: /health/ready
+              port: http
+            periodSeconds: 10
+            timeoutSeconds: 5
+          livenessProbe:
+            httpGet:
+              path: /health/live
+              port: http
+            periodSeconds: 20
+            timeoutSeconds: 5
+          resources:
+            # HPA calculates CPU utilisation relative to this CPU request.
+            requests:
+              # 500m allows eight replicas to schedule across three 2-vCPU nodes.
+              cpu: "500m"
+              memory: 1Gi
+            limits:
+              cpu: "1000m"
+              memory: 3Gi
+      volumes:
+        - name: model-storage
+          csi:
+            driver: gcsfuse.csi.storage.gke.io
+            readOnly: true
+            volumeAttributes:
+              bucketName: causal-space-503901-p7-smartpark-models
+              mountOptions: implicit-dirs

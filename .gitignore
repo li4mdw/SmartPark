@@ -16,6 +16,16 @@ htmlcov/
 # Environment Variables & Secrets
 .env
 .env.local
+.env.*
+!.env.example
+
+# Large model weights are supplied separately and mounted at runtime
+model/*.pt
+model/*.onnx
+
+# Generated inference output
+result/
+annotated-test.jpg
 
 # IDE & Editor files
 .vscode/

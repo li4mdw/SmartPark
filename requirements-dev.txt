@@ -5,4 +5,5 @@ torch==2.13.0+cpu
 torchvision==0.28.0+cpu
 ultralytics==8.4.135
 pytest==8.4.2
+locust==2.46.4
 uvicorn[standard]==0.52.4
