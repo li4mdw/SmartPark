@@ -14,6 +14,9 @@ spec:
       # GKE injects the sidecar that mounts the Cloud Storage bucket.
       annotations:
         gke-gcsfuse/volumes: "true"
+        # The model is read once at startup, so the mount sidecar does not need
+        # its default 250m CPU reservation for the lifetime of every replica.
+        gke-gcsfuse/cpu-request: "100m"
     spec:
       serviceAccountName: smartpark-model-reader
       containers:
@@ -61,8 +64,9 @@ spec:
           resources:
             # HPA calculates CPU utilisation relative to this CPU request.
             requests:
-              # 500m allows eight replicas to schedule across three 2-vCPU nodes.
-              cpu: "500m"
+              # A modest reservation lets eight replicas fit on the fixed
+              # three-node benchmark cluster; the limit permits CPU bursting.
+              cpu: "250m"
               memory: 1Gi
             limits:
               cpu: "1000m"

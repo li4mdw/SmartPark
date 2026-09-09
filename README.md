@@ -128,7 +128,7 @@ docker build -f camera.Dockerfile -t smartpark-camera:v1 .
 
 ## Deploy to GKE
 
-The checked-in manifests use these deployment-specific values:
+The checked-in manifests use these values from the original deployment:
 
 - Project: `causal-space-503901-p7`
 - Cluster: `fit3184-cluster`
@@ -202,9 +202,3 @@ steady-state duration for every run.
 | `INFERENCE_CONCURRENCY` | `1` | Concurrent predictions per API process. |
 | `SEARCH_CACHE_TTL_SECONDS` | `30` | Search-result cache lifetime. |
 | `RECENT_USER_WINDOW_SECONDS` | `30` | Active-user reporting window. |
-
-## Submission packaging
-
-Do not include `.venv`, `.git`, Python caches, generated output or pretrained
-`.pt`/`.onnx` files. Keep `model/README.md` in the archive so the external model
-can be restored. Packaging instructions are included at the end of that file.
